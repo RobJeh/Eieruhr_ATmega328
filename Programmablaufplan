@@ -1,0 +1,42 @@
+  ----  Programmablaufplan ----
+________________________________________________________________________________________________________________
+
+- Einteilung Aufgaben:
+(1) Robert - Tasten Interrupts
+(2) Markus - Timer
+(3) Franz - Display
+(4) Marvin - Alarm
+_________________________________________________________________________________________________
+
+- Randbedingungen:
+
+Taste 1 - Zeit um 1 min inkrementieren
+Taste 2 - Zeit um 1 min dekrementieren
+Taste 3 - Start/Stop
+
+Zeit 1...59min
+
+Display - Ausgabe der verbleibnden Zeit in min:sec (Bsp. 00:10)
+
+_________________________________________________________________________________________________
+
+- Ablauf:
+
+Einstellung der Zeit über Tasten (1+, 2-) + Anzeige der Zeit auf Display(min:sec, Bsp. 30:00)     (1)+(3)
+
+Start mit Taste 3                                                                                 (1)
+
+Übergabe Zeit an Timer durch Freigabe von Timer-Interrupts                                        (2)
+Sperrung Interrupts der Tasten                                                                    (1)
+
+Dekrementierung der Zeit in globaler Variable, Zugriff Display auf selbe Variable                 (2)+(3)
+-> if-Bedingung sperrt Dekrementierung bei Zeit=0                                                 (2)
+
+Bei abgelaufener Zeit Auslösung Alarm                                                             (2)+(4)
+
+
+___________
+Ausnahmen:
+- Beendigung des Timers mit Taste 3
+- Danach Neueingabe der Zeit möglich durch Tasten 1 und 2 --> Rücksetzen der Zeit auf Ursprungswert / Zeit bleibt stehen, da nicht weiter in ISR dekrementiert???
+
