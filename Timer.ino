@@ -15,7 +15,6 @@ void Init_T0() {
 
 
 ISR(TIMER0_COMPA_vect){
-  //static-Variable wird bei Deklaration mit Wert definiert und bleibt auch bei Verlassen erhalten
   static int milliseconds = 0;
 
   milliseconds ++;
