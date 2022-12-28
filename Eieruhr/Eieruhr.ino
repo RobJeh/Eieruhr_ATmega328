@@ -16,6 +16,9 @@ void Init_Anzeige() {
   SET(DDRB, DATA);              /* alle drei Bit Output */
   SET(DDRD, (CLK | LATCH));
   CLEAR(PORTD, (CLK | LATCH)); /* SHIFT und LATCH Low */
+
+
+  
 }
 
 /*Initialisiere PORTB Pin 2 und 5 auf Output */
