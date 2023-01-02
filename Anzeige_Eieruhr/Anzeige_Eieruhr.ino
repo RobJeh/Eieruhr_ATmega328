@@ -61,9 +61,7 @@
 
 unsigned char Muster1, Muster2, Muster3, Muster4;
 
-int wert_min = 3; //EIngabe der Testwerte für Minuten
-int wert_sec = 22; //Eingabe der Testwerte für Sekunden
-
+int wert_timer = 586;
 void Init_Ports() {
   SET(DDRB, DATA);              /* alle drei Bit Output */
   SET(DDRD, (CLK | LATCH));
@@ -196,17 +194,20 @@ void ANZ4(unsigned char Muster){
     CLEAR(PORTD, LATCH);
 }
 
-void UmwandlungZahlen(int wert_min, int wert_sec){
+void UmwandlungZahlen(int wert_timer){
+  int wert_min = wert_timer / 60;
+  int wert_sec = wert_timer % 60;
   int wert_min1 = wert_min / 10;
   int wert_min2 = wert_min % 10;
   int wert_sec1 = wert_sec / 10;
-  int wert_sec2 = wert_sec % 10;
+  int wert_sec2 = wert_sec % 10;  
 
-  if ((wert_min1 && wert_min2) == 0){
+  /*if ((wert_min1 && wert_min2) == 0){
     Muster1=BLACK;
-    Muster2=BLACK;    
+    Muster2=BLACK;
+
   } 
-  else{
+  else{*/
       switch(wert_min1){
         case 0: Muster1=ZERO; break;    
         case 1: Muster1=ONE; break;
@@ -231,7 +232,6 @@ void UmwandlungZahlen(int wert_min, int wert_sec){
         case 8: Muster2=EIGHT; break;
         case 9: Muster2=NINE; break;
       }
-  }
      switch(wert_sec1){
         case 0: Muster3=ZERO; break;    
         case 1: Muster3=ONE; break;
@@ -259,7 +259,7 @@ void UmwandlungZahlen(int wert_min, int wert_sec){
 }
 
 void AnzeigeZiffer() {
-UmwandlungZahlen(wert_min,wert_sec);
+UmwandlungZahlen(wert_timer);
 
 ANZ1(Muster1);
 ANZ2(Muster2);
