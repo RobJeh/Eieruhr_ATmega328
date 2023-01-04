@@ -1,0 +1,6 @@
+{
+    "board": "arduino:avr:uno",
+    "programmer": "arduino:avrispmkii",
+    "port": "/dev/tty.usbserial-14230",
+    "sketch": "Eieruhr/Eieruhr.ino"
+}
