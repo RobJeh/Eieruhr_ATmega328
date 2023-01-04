@@ -226,40 +226,27 @@ ISR(TIMER0_COMPA_vect)
 
 ISR(TIMER2_COMPA_vect)
 {
-  static int milliseconds = 0;
   static int seg = 1;
 
-  if (milliseconds > 10)
-  { // Fehlerbehandlung
-    milliseconds = 0;
-  }
-  else
-  { // bei Zustand Start läuft Timer
-    milliseconds++;
-    // Serial.println("Test1 Timer");
-  }
-
-  if (milliseconds == 1)
+  GetTime(seconds);
+  switch (seg)
   {
-    GetTime(seconds);
-    switch (seg)
-    {
-    case 1:
-      SetSegment(digitSeg1, DISP1);
-      break;
-    case 2:
-      SetSegment(digitSeg2, DISP2);
-      break;
-    case 3:
-      SetSegment(digitSeg3, DISP3);
-      break;
-    case 4:
-      SetSegment(digitSeg4, DISP4);
-      seg = 0;
-      break;
-    }
+  case 1:
+    SetSegment(digitSeg1, DISP1);
+    seg++;           
+    break;
+  case 2:
+    SetSegment(digitSeg2, DISP2);
     seg++;
-    milliseconds = 0;
+    break;
+  case 3:
+    SetSegment(digitSeg3, DISP3);
+    seg++;
+    break;
+  case 4:
+    SetSegment(digitSeg4, DISP4);
+    seg = 1;
+    break;
   }
 }
 
