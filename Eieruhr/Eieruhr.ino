@@ -68,6 +68,7 @@
 #define EIGHT 0x80
 #define NINE 0x90
 #define BLACK 0xFF
+#define POINT 0x7F // 0b01111111
 
 /* Define bit for display segment (HEX) */
 #define DISP1 0xF1
@@ -315,8 +316,8 @@ ISR(TIMER2_COMPA_vect)
     seg++;                         /* Set the focus for the next ISR call to the next segment */
     break;
   case 2:
-    Set_Segment(digitSeg2, DISP2); /* Set segment 2 to calculated value */
-    seg++;                         /* Set the focus for the next ISR call to the next segment */
+    Set_Segment(CLEAR(digitSeg2, 0x80), DISP2); /* Set segment 2 (and point) to calculated value */
+    seg++;                                      /* Set the focus for the next ISR call to the next segment */
     break;
   case 3:
     Set_Segment(digitSeg3, DISP3); /* Set segment 3 to calculated value */
