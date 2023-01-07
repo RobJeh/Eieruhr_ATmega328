@@ -35,28 +35,28 @@
 */
 
 /********************************************************************************
-      Define
+ *    Define
  ********************************************************************************/
 
-/* Define Bit fuer Taste 1-3 */
+/* Define bit for button 1-3 */
 #define TA1 BIT(1)
 #define TA2 BIT(2)
 #define TA3 BIT(3)
 
-/* Define Bit fuer Speaker */
+/* Define bit for speaker */
 #define LED1 BIT(5)
 #define SPEAKER BIT(3)
 
-/* Define Sound-/delayLength Speaker */
+/* Define sound-/delayLength of speaker */
 #define soundLength 150000
 #define delayLength 0.75 * soundLength
 
-/* Define Bit fuer Display */
+/* Define bit for Display */
 #define DATA BIT(0)
 #define CLK BIT(7)
 #define LATCH BIT(4)
 
-/* Define Bit-Maske fuer Ziffern */
+/* Define bit mask for digits (HEX) */
 #define ZERO 0xC0
 #define ONE 0xF9
 #define TWO 0xA4
@@ -69,48 +69,43 @@
 #define NINE 0x90
 #define BLACK 0xFF
 
-/* Define Bit fuer Display-Segment */
+/* Define bit for display segment (HEX) */
 #define DISP1 0xF1
 #define DISP3 0xF4
 #define DISP2 0xF2
 #define DISP4 0xF8
 
-#define N 2000
-
 /********************************************************************************
-      Global variables
+ *    Global variables
  ********************************************************************************/
 
-int isTimer = 0;          /* 1 = Running, 0 = Stop */
-volatile int isAlarm = 0; /* 1 = Alarm on, 0 = Alarm off  */
+volatile bool isTimer = false; /* true = Timer running, false = Timer stopped */
+volatile bool isAlarm = false; /* true = Alarm on, false = Alarm off  */
 
-unsigned char digitSeg1, digitSeg2, digitSeg3, digitSeg4; /* stores the digit displayed on the segment */
+unsigned char digitSeg1, digitSeg2, digitSeg3, digitSeg4; /* Stores the digit displayed on the segment */
 
-int minutes = 1;
-int seconds = 5;
+int seconds = 5; /* Default 5 seconds after reset */
 
-int Zustand = 0;
-int Zustand_alt = 0;
-int Flanke = 0;
-int count = 0;
+int stateTA1, stateTA2, stateTA3 = 0;             /* Stores the state of the button */
+int stateTA1_old, stateTA2_old, stateTA3_old = 0; /* Stores the old state of the button */
+int edge1, edge2, edge3 = 0;                      /* Stores the edge detection state of the button */
 
 /********************************************************************************
-      Prototypes
+ *    Prototypes
  ********************************************************************************/
 
 /* Display */
 void Init_Display();
-void GetTime(int timerValue);
-void SetSegment(unsigned char digitMask, unsigned char segment);
-void SetDisplay();
+void Get_Time(int timerValue);
+void Set_Segment(unsigned char digitMask, unsigned char segment);
 
 /*  Alarm */
 void Init_Alarm();
 void Wait(unsigned long delay);
-void LED1_off();
-void LED1_on();
-void Speaker_on();
-void Speaker_off();
+void LED1_OFF();
+void LED1_ON();
+void Speaker_ON();
+void Speaker_OFF();
 void Sound(unsigned long durationOn, unsigned long durationOff);
 void Refrain();
 void Strophe();
@@ -120,180 +115,264 @@ void Melody();
 void Init_T0();
 void Init_T1();
 
-/*Tasten-Interrupts*/
-// void Init_Tasten();
-void Entprellen();
+void Init_Buttons();
+void Get_Buttons();
 enum State
 {
-  AN,
-  AUS
+  PRESSED,
+  RELEASED
 };
 
 /********************************************************************************
-      Init
+ *    Init
  ********************************************************************************/
 
+/* Initialize the display */
 void Init_Display()
 {
-  SET(DDRB, DATA); /* alle drei Bit Output */
-  SET(DDRD, (CLK | LATCH));
-  CLEAR(PORTD, (CLK | LATCH)); /* SHIFT und LATCH Low */
+  SET(DDRB, DATA);             /* All 3 signals output */
+  SET(DDRD, (CLK | LATCH));    /* */
+  CLEAR(PORTD, (CLK | LATCH)); /* CLK und LATCH Low */
 }
 
-// Initialisierung des Alarms
+/* Initialize the alarm */
 void Init_Alarm()
 {
-  SET(DDRB, LED1); // LED auf Output
-  LED1_off();
+  /* For silent mode LED1 */
+  SET(DDRB, LED1); /* Set LED1 to output */
+  LED1_OFF();      /* Switch off the LED1 initially */
 
-  SET(DDRD, SPEAKER);  // SPEAKER auf Output
-  SET(PORTD, SPEAKER); // SPEAKER AUS
+  /* For alarm mode SPEAKER */
+  SET(DDRD, SPEAKER);  /* Set SPEAKER to output */
+  SET(PORTD, SPEAKER); /* Switch off the SPEAKER initially */
 }
 
-// Initialisierung des Timers 0
+/* Initialize the 8-bit Timer0 */
 void Init_T0()
 {
-  TCCR0A = 0x02;
-  TCCR0B = 0x03;
-  OCR0A = 250; // Zählweite im CTC-Mode bis 250
+  TCCR0A = 0x02; /* CTC-Mode */
+  TCCR0B = 0x03; /* VT / */
+  OCR0A = 250;   /* Count range in CTC mode up to 250 */
   TIMSK0 = 0x03;
   TCNT0 = 0;
   TIFR0 = 0x07;
   Serial.begin(9600);
 }
 
-// Initialisierung des Timers 1
+/* Initialize the 8-bit Timer2 */
 void Init_T1()
 {
-  TCCR2A = 0x02; // CTC-Mode
-  TCCR2B = 0x04; // /256
-  OCR2A = 250;   // Zählweite im CTC-Mode bis 250
+  TCCR2A = 0x02; /* CTC-Mode */
+  TCCR2B = 0x04; /* VT /256 */
+  OCR2A = 250;   /* Count range in CTC mode up to 250 */
   TIMSK2 = 0x03;
   TCNT2 = 0;
   TIFR2 = 0x07;
 }
 
-/* Initialisierung der Tasten-Interrupts */
-void Init_Tasten()
+/* Initialisierung der buttons-Interrupts */
+void Init_Buttons()
 {
-  CLEAR(DDRC, TA1); // Taste 1 auf Input
-  SET(PORTC, TA1);  // Taste 1 auf Pullup (High)
+  CLEAR(DDRC, TA1); /* button 1 auf Input */
+  SET(PORTC, TA1);  /* button 1 auf Pullup (High) */
 
-  CLEAR(DDRC, TA2); // Taste 2 auf Input
-  SET(PORTC, TA2);  // Taste 2 auf Pullup (High)
+  CLEAR(DDRC, TA2); /* button 2 auf Input */
+  SET(PORTC, TA2);  /* button 2 auf Pullup (High) */
 
-  CLEAR(DDRC, TA3); // Taste 1 auf Input
-  SET(PORTC, TA3);  // Taste 1 auf Pullup (High)
-
-  SET(PCMSK1, TA1);   // erlaube der TA1 die auslösung des Interrupts
-  SET(PCMSK1, TA2);   // erlaube der TA2 die auslösung des Interrupts
-  SET(PCMSK1, TA3);   // erlaube der TA3 die auslösung des Interrupts
-  SET(PCICR, BIT(1)); // Interrupt-Gruppe 1 (Portc) erlauben
-  SET(PCIFR, BIT(1)); // anhängige Interrupts löschen
+  CLEAR(DDRC, TA3); /* button 1 auf Input */
+  SET(PORTC, TA3);  /* button 1 auf Pullup (High) */
 }
 
 /********************************************************************************
-      Timer (ISR)
-  /********************************************************************************/
+ *    Timer (ISR)
+ ********************************************************************************/
 
+/* ISR for manually triggered "egg timer" (TIMER0) */
 ISR(TIMER0_COMPA_vect)
 {
   static int milliseconds = 0;
   if (milliseconds >= 1000)
-  { // Fehlerbehandlung
-    milliseconds = 0;
+  {
+    milliseconds = 0; /* Overflow handling */
   }
-  else if (isTimer == 1)
-  { // bei isTimer Start läuft Timer
-    milliseconds++;
-    // Serial.println("Timer 1");
+  else if (isTimer)
+  {
+    milliseconds++; /* on Timer0 is running (isTimer) -> increase milliseconds */
   }
-
-  if (seconds == 0 && isTimer == 1)
-  { // Auslösen Alarm bei seconds==0, --seconds bei 1000 Millisekunden
-    isAlarm = 1;
-    isTimer = 0;
+  if (seconds == 0 && isTimer)
+  {
+    isAlarm = 1;     /* Trigger alarm at seconds==0 */
+    isTimer = false; /* Stop Timer0 at seconds==0 */
+    /* Debugging */
     Serial.println("isAlarm 1");
     Serial.print("isTimer: ");
     Serial.println(isTimer);
   }
   if (milliseconds == 1000 && seconds > 0)
   {
-    --seconds;
-    milliseconds = 0;
+    --seconds;        /* Subtract 1 second at milliseconds==1000 */
+    milliseconds = 0; /* Reset milliseconds */
   }
 }
 
+/* ISR for display refresh and button handling (TIMER2) */
 ISR(TIMER2_COMPA_vect)
 {
   static int seg = 1;
-
-  GetTime(seconds);
+  /* Debugging */
+  /* Wait(100000); */
+  /**** Buttons ****/
+  Get_Buttons();
+  if (edge1 == 1)
+  {
+    /* on Button 1 rising edge */
+    if (stateTA1 == 1 && stateTA1_old == 0)
+    {
+      LED1_ON();
+      Serial.println("button1"); /* Debugging */
+      if (!isTimer && seconds < 60 * 59)
+      {
+        seconds += min(60, 60 - (seconds % 60)); /* Calculates to the highest value if this is <60 */
+        /* Debugging */
+        Serial.print("isTimer:  ");
+        Serial.println(isTimer);
+        Serial.print("minutes: ");
+        Serial.println(seconds / 60);
+      }
+      stateTA1_old = stateTA1;
+    }
+    else
+    {
+      LED1_OFF();
+      stateTA1_old = 0;
+    }
+    edge1 = 0;
+  }
+  if (edge2 == 1)
+  {
+    /* on Button 2 rising edge */
+    if (stateTA2 == 1 && stateTA2_old == 0)
+    {
+      LED1_ON();
+      Serial.println("button2"); /* Debugging */
+      if (!isTimer && seconds > 60)
+      {
+        seconds -= max(60, 60 + (seconds % 60)); /* Calculates to the lowest value if this is <60 */
+        /* Debugging */
+        Serial.print("isTimer:  ");
+        Serial.println(isTimer);
+        Serial.print("minutes: ");
+        Serial.println(seconds / 60);
+      }
+      stateTA2_old = stateTA2;
+    }
+    else
+    {
+      LED1_OFF();
+      stateTA2_old = 0;
+    }
+    edge2 = 0;
+  }
+  if (edge3 == 1)
+  {
+    /* on Button 3 rising edge */
+    if (stateTA3 == 1 && stateTA3_old == 0)
+    {
+      LED1_ON();
+      Serial.println("button3"); /* Debugging */
+      if (isTimer)
+      {
+        isTimer = false; /* when Timer0 is running -> switch off Timer0 */
+      }
+      else if (!isTimer && !isAlarm)
+      {
+        isTimer = 1; /* when Timer0 is not running -> switch on Timer0 */
+      };
+      if (isAlarm == 1 && !isTimer)
+      {
+        isAlarm = false; /* when alarm is on -> turn off alarm */
+      }
+      /* Debugging */
+      Serial.print("isTimer");
+      Serial.println(isTimer);
+      Serial.print("Alarm An");
+      Serial.println(isAlarm);
+      stateTA3_old = stateTA3;
+    }
+    else
+    {
+      LED1_OFF();
+      stateTA3_old = 0;
+    }
+    edge3 = 0;
+  }
+  /**** Display ****/
+  Get_Time(seconds); /* Calculates each segment digit based on the remaining seconds */
   switch (seg)
   {
   case 1:
-    SetSegment(digitSeg1, DISP1);
-    seg++;           
+    Set_Segment(digitSeg1, DISP1); /* Set segment 1 to calculated value */
+    seg++;                         /* Set the focus for the next ISR call to the next segment */
     break;
   case 2:
-    SetSegment(digitSeg2, DISP2);
-    seg++;
+    Set_Segment(digitSeg2, DISP2); /* Set segment 2 to calculated value */
+    seg++;                         /* Set the focus for the next ISR call to the next segment */
     break;
   case 3:
-    SetSegment(digitSeg3, DISP3);
-    seg++;
+    Set_Segment(digitSeg3, DISP3); /* Set segment 3 to calculated value */
+    seg++;                         /* Set the focus for the next ISR call to the next segment */
     break;
   case 4:
-    SetSegment(digitSeg4, DISP4);
-    seg = 1;
+    Set_Segment(digitSeg4, DISP4); /* Set segment 4 to calculated value */
+    seg = 1;                       /* Set the focus for the next ISR call to the first segment */
     break;
   }
 }
 
 /********************************************************************************
-      Alarm
-  /********************************************************************************/
+ *    Alarm
+ ********************************************************************************/
 
-// LED 1 anschalten
-void LED1_off()
+/* Switch on LED1  */
+void LED1_OFF()
 {
   SET(PORTB, LED1);
 }
-// LED 1 ausschalten
-void LED1_on()
+/* Switch off LED1 */
+void LED1_ON()
 {
   CLEAR(PORTB, LED1);
 }
-// Lautsprecher anschalten
-void Speaker_on()
+/* Switch on Speaker */
+void Speaker_ON()
 {
-  // CLEAR(PORTD, SPEAKER);    //zu Testzwecken ausgeschalten
-  LED1_on();
+  /* CLEAR(PORTD, SPEAKER);    /*zu Testzwecken ausgeschalten*/
+  LED1_ON();
 }
-// Lautsprecher ausschalten
-void Speaker_off()
+/* Switch off Speaker */
+void Speaker_OFF()
 {
-  // SET(PORTD, SPEAKER);      //zu Testzwecken ausgeschalten
-  LED1_off();
+  /* SET(PORTD, SPEAKER);      /*zu Testzwecken ausgeschalten*/
+  LED1_OFF();
 }
 
-// Funktion zum Erzeugen einer Verzögerung
+/* Funktion zum Erzeugen einer Verzögerung*/
 void Wait(unsigned long delay)
 {
-  for (volatile unsigned long i = 0; i < delay; i++) // zähle bis delay -> Pause
+  for (volatile unsigned long i = 0; i < delay; i++) /* zähle bis delay -> Pause*/
     ;
 }
 
-// Erzeugen eines Sounds
+/* Erzeugen eines Sounds*/
 void Sound(unsigned long durationOn, unsigned long durationOff)
 {
-  Speaker_on();
+  Speaker_ON();
   Wait(durationOn);
-  Speaker_off();
+  Speaker_OFF();
   Wait(durationOff);
 }
 
-// Melody als Refrain
+/* Melody als Refrain*/
 void Refrain()
 {
   if (isAlarm == 1)
@@ -309,7 +388,7 @@ void Refrain()
     Sound(soundLength * 2, delayLength * 2);
   }
 }
-// Melody als Strophe
+/* Melody als Strophe*/
 void Strophe()
 {
   if (isAlarm == 1)
@@ -343,7 +422,7 @@ void Strophe()
   }
 }
 
-// Melody aus Refrain und Strophe
+/* Melody aus Refrain und Strophe*/
 void Melody()
 {
   if (isAlarm == 1)
@@ -361,17 +440,17 @@ void Melody()
       Serial.println("Strophe 2 zuende");
       Wait(delayLength * 2);
     }
-    isAlarm = 0; // Alarm-Flag wieder auf 0 setzen
+    isAlarm = false; /* Alarm-Flag wieder auf 0 setzen*/
     seconds = 60;
   }
 }
 
 /********************************************************************************
-      Display
+ *    Display
  ********************************************************************************/
 
 /* Compute the minutes and secound digits from the timer value */
-void GetTime(int timerValue)
+void Get_Time(int timerValue)
 {
   int minValue = timerValue / 60;
   int secValue = timerValue % 60;
@@ -514,8 +593,8 @@ void GetTime(int timerValue)
   }
 }
 
-/* DARSTELLUNG DER ZAHLEN FÜR 4 DIGIT */
-void SetSegment(unsigned char digitMask, unsigned char segment)
+/* Put a digit on a segment */
+void Set_Segment(unsigned char digitMask, unsigned char segment)
 {
   for (int i = 0; i < 8; i++)
   {
@@ -528,11 +607,9 @@ void SetSegment(unsigned char digitMask, unsigned char segment)
       CLEAR(PORTB, DATA);
     }
     digitMask <<= 1;
-
     SET(PORTD, CLK);
     CLEAR(PORTD, CLK);
   }
-
   for (int i = 0; i < 8; i++)
   {
     if (segment & BIT(7))
@@ -544,167 +621,78 @@ void SetSegment(unsigned char digitMask, unsigned char segment)
       CLEAR(PORTB, DATA);
     }
     segment <<= 1;
-
     SET(PORTD, CLK);
     CLEAR(PORTD, CLK);
   }
-
   SET(PORTD, LATCH);
   CLEAR(PORTD, LATCH);
 }
 
-void SetDisplay()
+/*********************************************************************************
+ *    Buttons
+ *********************************************************************************/
+
+/* Read a button value and return the state as an State enum */
+enum State ReadButton(unsigned char button)
 {
-  GetTime(seconds);
-
-  SetSegment(digitSeg4, DISP4);
-  Wait(1000);
-  SetSegment(digitSeg3, DISP3);
-  Wait(1000);
-  SetSegment(digitSeg2, DISP2);
-  Wait(1000);
-  SetSegment(digitSeg1, DISP1);
-  Wait(1000);
-}
-
-//********************************************************************************
-//        Tasten
-//********************************************************************************
-
-enum State liesTaste1()
-{
-  if (PINC & TA1)
+  if (PINC & button)
   {
-    Serial.println("Taste1");
-    if (isTimer == 0 && seconds < 60 * 59)
-    {
-      seconds += min(60, 60 - (seconds % 60)); // Rechnet auf höchsten Wert, wenn dieser <60 entfernt liegt
-      Serial.print("isTimer:  ");
-      Serial.println(isTimer);
-      Serial.print("minutes: ");
-      Serial.println(seconds / 60);
-    }
-    return AN;
+    return PRESSED;
   }
   else
   {
-    return AUS;
+    return RELEASED;
   }
 }
 
-void Entprellen()
+/* Get all button states */
+void Get_Buttons()
 {
-  enum State T_neu;
-  static enum State T_alt = AUS;
-  static int Counter;
+  enum State T1_new;
+  enum State T2_new;
+  enum State T3_new;
+  static enum State T1_old = RELEASED;
+  static enum State T2_old = RELEASED;
+  static enum State T3_old = RELEASED;
 
-  T_neu = liesTaste1();
-  if (T_neu != T_alt)
-  {
-    Counter = 0;
-  }
-  else
-  {
-    Counter++;
-    if (Counter == N)
-    {
-      Zustand = T_neu;
-      Flanke = 1;
-    }
-    if (Counter > N + 1)
-    {
-      Counter = N + 1;
-    }
-    T_alt = T_neu;
-  }
-}
+  T1_new = ReadButton(TA1);
+  T2_new = ReadButton(TA2);
+  T3_new = ReadButton(TA3);
 
-ISR(PCINT1_vect)
-{
-  if (~PINC & TA1)
+  if (T1_new != T1_old)
   {
-    Serial.println("Taste1");
-    if (isTimer == 0 && seconds < 60 * 59)
-    {
-      seconds += min(60, 60 - (seconds % 60)); // Rechnet auf höchsten Wert, wenn dieser <60 entfernt liegt
-      Serial.print("isTimer:  ");
-      Serial.println(isTimer);
-      Serial.print("minutes: ");
-      Serial.println(seconds / 60);
-    }
+    stateTA1 = T1_new;
+    edge1 = 1;
   }
-  if (~PINC & TA2)
+  if (T2_new != T2_old)
   {
-    Serial.println("Taste2");
-    if (isTimer == 0 && seconds > 60)
-    {
-      seconds -= max(60, 60 + (seconds % 60)); // Rechnet auf niedrigsten Wert, wenn dieser <60 entfernt liegt
-      Serial.print("isTimer:  ");
-      Serial.println(isTimer);
-      Serial.print("minutes: ");
-      Serial.println(seconds / 60);
-    }
+    stateTA2 = T2_new;
+    edge2 = 1;
   }
-  if (~PINC & TA3)
+  if (T3_new != T3_old)
   {
-    Serial.println("Taste3");
-
-    if (isTimer == 1)
-    {
-      isTimer = 0;
-    } // Wechsel des isTimeres
-    else if (isTimer == 0 && !isAlarm)
-    {
-      isTimer = 1;
-    };
-
-    if (isAlarm == 1 && isTimer == 0)
-    {
-      isAlarm = 0;
-    }
-
-    Serial.print("isTimer");
-    Serial.println(isTimer);
-    Serial.print("Alarm An");
-    Serial.println(isAlarm);
+    stateTA3 = T3_new;
+    edge3 = 1;
   }
+  T1_old = T1_new;
+  T2_old = T2_new;
+  T3_old = T3_new;
 }
 
 /********************************************************************************
-      Main
+ *    Main
  ********************************************************************************/
 
 int main()
 {
-  Serial.begin(9600); // zu Testzwecken
+  Serial.begin(9600); /* Debugging */
   Init_Display();
   Init_Alarm();
   Init_T0();
   Init_T1();
-  Init_Tasten();
   sei();
-
   while (1)
   {
-    // SetDisplay();
-    /*
-      Entprellen();
-      if (Flanke == 1) {    // Ta 1 steigende Flanke?
-      if (Zustand == 1 && Zustand_alt == 0) {
-          LED1_on();
-          Zustand_alt = Zustand;
-        } else {
-          LED1_off();
-          Zustand_alt = 0;
-          count++;
-        }
-        Flanke = 0;
-      }
-
-    */
-    // Serial.println(isAlarm);
-    //  Triggerung in Timer-ISR, Ausführung in Main, damit Tasten-Interupt Alarm Abschalten kann
-
     if (isAlarm == 1)
     {
       Melody();
