@@ -152,7 +152,7 @@ void Init_Alarm()
 void Init_T0()
 {
   TCCR0A = 0x02; /* CTC-Mode */
-  TCCR0B = 0x03; /* VT / */
+  TCCR0B = 0x03; /* VT /64 */
   OCR0A = 250;   /* Count range in CTC mode up to 250 */
   TIMSK0 = 0x02;
   Serial.begin(9600);
