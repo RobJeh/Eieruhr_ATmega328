@@ -140,7 +140,7 @@ void Init_Display()
 void Init_Alarm()
 {
   /* For silent mode LED1 */
-  SET(DDRB, LED1); /* Set LED1 to output */
+  SET(DDRB, LED1); /* Set LED1 to output */w
   LED1_OFF();      /* Switch off the LED1 initially */
 
   /* For alarm mode SPEAKER */
@@ -154,9 +154,7 @@ void Init_T0()
   TCCR0A = 0x02; /* CTC-Mode */
   TCCR0B = 0x03; /* VT / */
   OCR0A = 250;   /* Count range in CTC mode up to 250 */
-  TIMSK0 = 0x03;
-  TCNT0 = 0;
-  TIFR0 = 0x07;
+  TIMSK0 = 0x02;
   Serial.begin(9600);
 }
 
@@ -166,9 +164,7 @@ void Init_T1()
   TCCR2A = 0x02; /* CTC-Mode */
   TCCR2B = 0x04; /* VT /256 */
   OCR2A = 250;   /* Count range in CTC mode up to 250 */
-  TIMSK2 = 0x03;
-  TCNT2 = 0;
-  TIFR2 = 0x07;
+  TIMSK2 = 0x02;
 }
 
 /* Initialisierung der buttons-Interrupts */
@@ -192,7 +188,7 @@ void Init_Buttons()
 ISR(TIMER0_COMPA_vect)
 {
   static int milliseconds = 0;
-  if (milliseconds >= 1000)
+  if (milliseconds > 1000)
   {
     milliseconds = 0; /* Overflow handling */
   }
