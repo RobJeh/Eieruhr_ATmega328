@@ -2,37 +2,6 @@
 #include <avr/interrupt.h>
 #include "bitops.h"
 
-/* Ausgabe der Zahl '2' auf Stelle 2 der 7-Segmentanzeige */
-
-/* Anschluss:
-      Schiebedaten  Port B Bit 0
-      Schiebetakt   Port D Bit 7
-      Ãœbernahmetakt Port D Bit 4
-
-   Ansteuerung:
-      - Beide Taktleitungen im RuheisTimer auf Low
-      - Ausgabe von 2 8-Bit Worten als Schiebedaten, MSB First
-      - nach Ausgabe jedes Bits ein Low-High-Low Impuls am Schiebetakt
-      - nach Ausgabe der beiden Bytes ein Low-High-Low Impuls am Ãœbernahmetakt
-
-      Byte 1    Byte 2
-      Segmente  Stelle    Segmentbits 0 => Segment an
-      -----------------   Stellenbit  1 => Stelle an
-      hgfedcba xxxx3210
-
-      Stelle 0 ist ganz rechts, 3 links
-
-    Bsp.
-      10100100 11110100   Segmente a, b, d, e und g der Stelle 2 leuchten
-
-         a
-        ---
-     f | g | b
-        ---
-     e |   | c
-        ---
-         d
-*/
 
 /********************************************************************************
  *    Define
@@ -155,7 +124,6 @@ void Init_T0()
   TCCR0B = 0x03; /* VT /64 */
   OCR0A = 250;   /* Count range in CTC mode up to 250 */
   TIMSK0 = 0x02;
-  Serial.begin(9600);
 }
 
 /* Initialize the 8-bit Timer2 */
@@ -200,10 +168,6 @@ ISR(TIMER0_COMPA_vect)
   {
     isAlarm = 1;     /* Trigger alarm at seconds==0 */
     isTimer = false; /* Stop Timer0 at seconds==0 */
-    /* Debugging */
-    Serial.println("isAlarm 1");
-    Serial.print("isTimer: ");
-    Serial.println(isTimer);
   }
   if (milliseconds == 1000 && seconds > 0)
   {
@@ -216,8 +180,6 @@ ISR(TIMER0_COMPA_vect)
 ISR(TIMER2_COMPA_vect)
 {
   static int seg = 1;
-  /* Debugging */
-  /* Wait(100000); */
   /**** Buttons ****/
   Get_Buttons();
   if (edge1 == 1)
@@ -226,15 +188,9 @@ ISR(TIMER2_COMPA_vect)
     if (stateTA1 == 1 && stateTA1_old == 0)
     {
       LED1_ON();
-      Serial.println("button1"); /* Debugging */
       if (!isTimer && seconds < 60 * 59)
       {
         seconds += min(60, 60 - (seconds % 60)); /* Calculates to the highest value if this is <60 */
-        /* Debugging */
-        Serial.print("isTimer:  ");
-        Serial.println(isTimer);
-        Serial.print("minutes: ");
-        Serial.println(seconds / 60);
       }
       stateTA1_old = stateTA1;
     }
@@ -251,15 +207,9 @@ ISR(TIMER2_COMPA_vect)
     if (stateTA2 == 1 && stateTA2_old == 0)
     {
       LED1_ON();
-      Serial.println("button2"); /* Debugging */
       if (!isTimer && seconds > 60)
       {
         seconds -= max(60, 60 + (seconds % 60)); /* Calculates to the lowest value if this is <60 */
-        /* Debugging */
-        Serial.print("isTimer:  ");
-        Serial.println(isTimer);
-        Serial.print("minutes: ");
-        Serial.println(seconds / 60);
       }
       stateTA2_old = stateTA2;
     }
@@ -276,7 +226,6 @@ ISR(TIMER2_COMPA_vect)
     if (stateTA3 == 1 && stateTA3_old == 0)
     {
       LED1_ON();
-      Serial.println("button3"); /* Debugging */
       if (isTimer)
       {
         isTimer = false; /* when Timer0 is running -> switch off Timer0 */
@@ -289,11 +238,6 @@ ISR(TIMER2_COMPA_vect)
       {
         isAlarm = false; /* when alarm is on -> turn off alarm */
       }
-      /* Debugging */
-      Serial.print("isTimer");
-      Serial.println(isTimer);
-      Serial.print("Alarm An");
-      Serial.println(isAlarm);
       stateTA3_old = stateTA3;
     }
     else
@@ -424,17 +368,12 @@ void Melody()
 {
   if (isAlarm == 1)
   {
-    Serial.println("Melody");
     for (volatile unsigned long i = 0; i < 1; i++)
     {
       Refrain();
-      Serial.println("Refrain 1 zuende");
       Refrain();
-      Serial.println("Rerain 2 zuende");
       Strophe();
-      Serial.println("Strophe 1 zuende");
       Strophe();
-      Serial.println("Strophe 2 zuende");
       Wait(delayLength * 2);
     }
     isAlarm = false; /* Alarm-Flag wieder auf 0 setzen*/
@@ -682,7 +621,6 @@ void Get_Buttons()
 
 int main()
 {
-  Serial.begin(9600); /* Debugging */
   Init_Display();
   Init_Alarm();
   Init_T0();
