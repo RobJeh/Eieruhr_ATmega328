@@ -2,7 +2,6 @@
 #include <avr/interrupt.h>
 #include "bitops.h"
 
-
 /********************************************************************************
  *    Define
  ********************************************************************************/
@@ -12,13 +11,17 @@
 #define TA2 BIT(2)
 #define TA3 BIT(3)
 
+/* Define bit for visual feedback */
+#define LED2 BIT(4)
+#define LED3 BIT(3)
+
 /* Define bit for speaker */
 #define LED1 BIT(5)
 #define SPEAKER BIT(3)
 
-/* Define sound-/delayLength of speaker */
-#define soundLength 150000
-#define delayLength 0.75 * soundLength
+/* Define sound-/delaylenght of speaker */
+#define SOUNDLENGTH 150000
+#define DELAYLENGTH 0.75 * SOUNDLENGTH
 
 /* Define bit for Display */
 #define DATA BIT(0)
@@ -37,7 +40,7 @@
 #define EIGHT 0x80
 #define NINE 0x90
 #define BLACK 0xFF
-#define POINT 0x7F // 0b01111111
+#define POINT 0x7F /* 0b01111111 */
 
 /* Define bit for display segment (HEX) */
 #define DISP1 0xF1
@@ -49,8 +52,10 @@
  *    Global variables
  ********************************************************************************/
 
-volatile bool isTimer = false; /* true = Timer running, false = Timer stopped */
-volatile bool isAlarm = false; /* true = Alarm on, false = Alarm off  */
+volatile bool isTimer = false;       /* true = Timer running, false = Timer stopped */
+volatile bool isAlarm = false;       /* true = Alarm on, false = Alarm off  */
+volatile bool isSilent = false;      /* true = Silent mode on, false = Silent mode off  */
+volatile bool isLongPressed = false; /* true = Silent mode on, false = Silent mode off  */
 
 unsigned char digitSeg1, digitSeg2, digitSeg3, digitSeg4; /* Stores the digit displayed on the segment */
 
@@ -69,6 +74,13 @@ void Init_Display();
 void Get_Time(int timerValue);
 void Set_Segment(unsigned char digitMask, unsigned char segment);
 
+/*  Feedback LEDs */
+void Init_Feedback();
+void LED2_OFF();
+void LED2_ON();
+void LED3_OFF();
+void LED3_ON();
+
 /*  Alarm */
 void Init_Alarm();
 void Wait(unsigned long delay);
@@ -83,8 +95,9 @@ void Melody();
 
 /* Timer */
 void Init_T0();
-void Init_T1();
+void Init_T2();
 
+/* Buttons */
 void Init_Buttons();
 void Get_Buttons();
 enum State
@@ -100,16 +113,23 @@ enum State
 /* Initialize the display */
 void Init_Display()
 {
-  SET(DDRB, DATA);             /* All 3 signals output */
+  SET(DDRB, DATA);             /* All 3 bits output */
   SET(DDRD, (CLK | LATCH));    /* */
   CLEAR(PORTD, (CLK | LATCH)); /* CLK und LATCH Low */
+}
+
+void Init_Feedback()
+{
+  SET(DDRB, LED2 | LED3); /* Set LED2, LED3 to output */
+  LED2_OFF();             /* Switch off the LED2 initially */
+  LED3_OFF();             /* Switch off the LED3 initially */
 }
 
 /* Initialize the alarm */
 void Init_Alarm()
 {
   /* For silent mode LED1 */
-  SET(DDRB, LED1); /* Set LED1 to output */w
+  SET(DDRB, LED1); /* Set LED1 to output */
   LED1_OFF();      /* Switch off the LED1 initially */
 
   /* For alarm mode SPEAKER */
@@ -127,7 +147,7 @@ void Init_T0()
 }
 
 /* Initialize the 8-bit Timer2 */
-void Init_T1()
+void Init_T2()
 {
   TCCR2A = 0x02; /* CTC-Mode */
   TCCR2B = 0x04; /* VT /256 */
@@ -135,17 +155,15 @@ void Init_T1()
   TIMSK2 = 0x02;
 }
 
-/* Initialisierung der buttons-Interrupts */
+/* Initialize the buttons */
 void Init_Buttons()
 {
-  CLEAR(DDRC, TA1); /* button 1 auf Input */
-  SET(PORTC, TA1);  /* button 1 auf Pullup (High) */
-
-  CLEAR(DDRC, TA2); /* button 2 auf Input */
-  SET(PORTC, TA2);  /* button 2 auf Pullup (High) */
-
-  CLEAR(DDRC, TA3); /* button 1 auf Input */
-  SET(PORTC, TA3);  /* button 1 auf Pullup (High) */
+  CLEAR(DDRC, TA1); /* button 1 to Input */
+  SET(PORTC, TA1);  /* button 1 to Pullup (High) */
+  CLEAR(DDRC, TA2); /* button 2 to Input */
+  SET(PORTC, TA2);  /* button 2 to Pullup (High) */
+  CLEAR(DDRC, TA3); /* button 1 to Input */
+  SET(PORTC, TA3);  /* button 1 to Pullup (High) */
 }
 
 /********************************************************************************
@@ -180,14 +198,24 @@ ISR(TIMER0_COMPA_vect)
 ISR(TIMER2_COMPA_vect)
 {
   static int seg = 1;
+
   /**** Buttons ****/
   Get_Buttons();
+  if (isSilent)
+  {
+    LED3_ON();
+  }
+  else
+  {
+    LED3_OFF();
+  }
+  /* Button 1 */
   if (edge1 == 1)
   {
     /* on Button 1 rising edge */
     if (stateTA1 == 1 && stateTA1_old == 0)
     {
-      LED1_ON();
+      LED2_ON();
       if (!isTimer && seconds < 60 * 59)
       {
         seconds += min(60, 60 - (seconds % 60)); /* Calculates to the highest value if this is <60 */
@@ -196,17 +224,18 @@ ISR(TIMER2_COMPA_vect)
     }
     else
     {
-      LED1_OFF();
+      LED2_OFF();
       stateTA1_old = 0;
     }
     edge1 = 0;
   }
+  /* Button 2 */
   if (edge2 == 1)
   {
     /* on Button 2 rising edge */
     if (stateTA2 == 1 && stateTA2_old == 0)
     {
-      LED1_ON();
+      LED2_ON();
       if (!isTimer && seconds > 60)
       {
         seconds -= max(60, 60 + (seconds % 60)); /* Calculates to the lowest value if this is <60 */
@@ -215,35 +244,52 @@ ISR(TIMER2_COMPA_vect)
     }
     else
     {
-      LED1_OFF();
+      LED2_OFF();
       stateTA2_old = 0;
     }
     edge2 = 0;
   }
+  /* Button 3 */
   if (edge3 == 1)
   {
-    /* on Button 3 rising edge */
-    if (stateTA3 == 1 && stateTA3_old == 0)
+    Serial.println(isSilent);
+    /* on Button 3 falling edge */
+    if (stateTA3 == 0 && stateTA3_old == 1)
     {
-      LED1_ON();
-      if (isTimer)
+      LED2_OFF();
+      Serial.println("falling");
+      if (!isLongPressed)
       {
-        isTimer = false; /* when Timer0 is running -> switch off Timer0 */
+        Serial.println("button3"); /* Debugging */
+        if (isTimer)
+        {
+          isTimer = false; /* when Timer0 is running -> switch off Timer0 */
+        }
+        else if (!isTimer && !isAlarm)
+        {
+          isTimer = 1; /* when Timer0 is not running -> switch on Timer0 */
+        };
+        if (isAlarm == 1 && !isTimer)
+        {
+          isAlarm = false; /* when alarm is on -> turn off alarm */
+        }
+        /* Debugging */
+        Serial.print("isTimer: ");
+        Serial.println(isTimer);
+        Serial.print("Alarm An: ");
+        Serial.println(isAlarm);
+        stateTA3_old = stateTA3;
       }
-      else if (!isTimer && !isAlarm)
-      {
-        isTimer = 1; /* when Timer0 is not running -> switch on Timer0 */
-      };
-      if (isAlarm == 1 && !isTimer)
-      {
-        isAlarm = false; /* when alarm is on -> turn off alarm */
-      }
-      stateTA3_old = stateTA3;
     }
     else
     {
-      LED1_OFF();
-      stateTA3_old = 0;
+      if (stateTA3 == 1)
+      {
+        LED2_ON();
+        stateTA3_old = 1;
+
+        Serial.println("rising");
+      }
     }
     edge3 = 0;
   }
@@ -271,6 +317,34 @@ ISR(TIMER2_COMPA_vect)
 }
 
 /********************************************************************************
+ *    Feedback LEDs
+ ********************************************************************************/
+
+/* Switch on LED2  */
+void LED2_OFF()
+{
+  SET(PORTB, LED2);
+}
+
+/* Switch off LED2 */
+void LED2_ON()
+{
+  CLEAR(PORTB, LED2);
+}
+
+/* Switch on LED3  */
+void LED3_OFF()
+{
+  SET(PORTB, LED3);
+}
+
+/* Switch off LED3 */
+void LED3_ON()
+{
+  CLEAR(PORTB, LED3);
+}
+
+/********************************************************************************
  *    Alarm
  ********************************************************************************/
 
@@ -279,91 +353,102 @@ void LED1_OFF()
 {
   SET(PORTB, LED1);
 }
+
 /* Switch off LED1 */
 void LED1_ON()
 {
   CLEAR(PORTB, LED1);
 }
+
 /* Switch on Speaker */
 void Speaker_ON()
 {
-  /* CLEAR(PORTD, SPEAKER);    /*zu Testzwecken ausgeschalten*/
-  LED1_ON();
+  CLEAR(PORTD, SPEAKER);
 }
+
 /* Switch off Speaker */
 void Speaker_OFF()
 {
-  /* SET(PORTD, SPEAKER);      /*zu Testzwecken ausgeschalten*/
-  LED1_OFF();
+  SET(PORTD, SPEAKER);
 }
 
-/* Funktion zum Erzeugen einer Verzögerung*/
+/* Wait function */
 void Wait(unsigned long delay)
 {
-  for (volatile unsigned long i = 0; i < delay; i++) /* zähle bis delay -> Pause*/
+  for (volatile unsigned long i = 0; i < delay; i++) /* count to delay -> wait */
     ;
 }
 
-/* Erzeugen eines Sounds*/
+/* Creating a sound */
 void Sound(unsigned long durationOn, unsigned long durationOff)
 {
-  Speaker_ON();
-  Wait(durationOn);
-  Speaker_OFF();
-  Wait(durationOff);
+  if (isSilent)
+  {
+    LED1_ON();
+    Wait(durationOn);
+    LED1_OFF();
+    Wait(durationOff);
+  }
+  else
+  {
+    Speaker_ON();
+    Wait(durationOn);
+    Speaker_OFF();
+    Wait(durationOff);
+  }
 }
 
-/* Melody als Refrain*/
+/* Melody as a "Refrain" */
 void Refrain()
 {
   if (isAlarm == 1)
   {
-    Sound(soundLength, delayLength);
-    Sound(soundLength, delayLength);
-    Sound(soundLength, delayLength);
-    Sound(soundLength, delayLength / 4);
-    Sound(soundLength / 2, delayLength / 2);
-    Sound(soundLength, delayLength);
-    Sound(soundLength, delayLength / 4);
-    Sound(soundLength / 2, delayLength / 2);
-    Sound(soundLength * 2, delayLength * 2);
+    Sound(SOUNDLENGTH, DELAYLENGTH);
+    Sound(SOUNDLENGTH, DELAYLENGTH);
+    Sound(SOUNDLENGTH, DELAYLENGTH);
+    Sound(SOUNDLENGTH, DELAYLENGTH / 4);
+    Sound(SOUNDLENGTH / 2, DELAYLENGTH / 2);
+    Sound(SOUNDLENGTH, DELAYLENGTH);
+    Sound(SOUNDLENGTH, DELAYLENGTH / 4);
+    Sound(SOUNDLENGTH / 2, DELAYLENGTH / 2);
+    Sound(SOUNDLENGTH * 2, DELAYLENGTH * 2);
   }
 }
-/* Melody als Strophe*/
+/* Melody as a "Strophe" */
 void Strophe()
 {
   if (isAlarm == 1)
   {
-    Sound(soundLength, delayLength);
-    Sound(soundLength, delayLength / 2);
-    Sound(soundLength / 2, delayLength / 2);
-    Sound(soundLength, delayLength);
-    Sound(soundLength / 2, delayLength / 2);
-    Sound(soundLength / 2, delayLength / 2);
-    Sound(soundLength / 4, delayLength / 4);
-    Sound(soundLength / 4, delayLength / 4);
-    Sound(soundLength / 2, delayLength);
+    Sound(SOUNDLENGTH, DELAYLENGTH);
+    Sound(SOUNDLENGTH, DELAYLENGTH / 2);
+    Sound(SOUNDLENGTH / 2, DELAYLENGTH / 2);
+    Sound(SOUNDLENGTH, DELAYLENGTH);
+    Sound(SOUNDLENGTH / 2, DELAYLENGTH / 2);
+    Sound(SOUNDLENGTH / 2, DELAYLENGTH / 2);
+    Sound(SOUNDLENGTH / 4, DELAYLENGTH / 4);
+    Sound(SOUNDLENGTH / 4, DELAYLENGTH / 4);
+    Sound(SOUNDLENGTH / 2, DELAYLENGTH);
 
-    Sound(soundLength / 2, delayLength / 2);
-    Sound(soundLength, delayLength);
-    Sound(soundLength / 2, delayLength / 2);
-    Sound(soundLength / 2, delayLength / 2);
-    Sound(soundLength / 4, delayLength / 4);
-    Sound(soundLength / 4, delayLength / 4);
-    Sound(soundLength / 2, delayLength);
+    Sound(SOUNDLENGTH / 2, DELAYLENGTH / 2);
+    Sound(SOUNDLENGTH, DELAYLENGTH);
+    Sound(SOUNDLENGTH / 2, DELAYLENGTH / 2);
+    Sound(SOUNDLENGTH / 2, DELAYLENGTH / 2);
+    Sound(SOUNDLENGTH / 4, DELAYLENGTH / 4);
+    Sound(SOUNDLENGTH / 4, DELAYLENGTH / 4);
+    Sound(SOUNDLENGTH / 2, DELAYLENGTH);
 
-    Sound(soundLength / 2, delayLength / 2);
-    Sound(soundLength, delayLength);
-    Sound(soundLength, delayLength / 2);
-    Sound(soundLength / 4, delayLength / 4);
-    Sound(soundLength, delayLength);
-    Sound(soundLength, delayLength / 2);
-    Sound(soundLength / 4, delayLength / 4);
-    Sound(soundLength * 2, delayLength);
+    Sound(SOUNDLENGTH / 2, DELAYLENGTH / 2);
+    Sound(SOUNDLENGTH, DELAYLENGTH);
+    Sound(SOUNDLENGTH, DELAYLENGTH / 2);
+    Sound(SOUNDLENGTH / 4, DELAYLENGTH / 4);
+    Sound(SOUNDLENGTH, DELAYLENGTH);
+    Sound(SOUNDLENGTH, DELAYLENGTH / 2);
+    Sound(SOUNDLENGTH / 4, DELAYLENGTH / 4);
+    Sound(SOUNDLENGTH * 2, DELAYLENGTH);
   }
 }
 
-/* Melody aus Refrain und Strophe*/
+/* Melody of chorus and verse */
 void Melody()
 {
   if (isAlarm == 1)
@@ -374,9 +459,9 @@ void Melody()
       Refrain();
       Strophe();
       Strophe();
-      Wait(delayLength * 2);
+      Wait(DELAYLENGTH * 2);
     }
-    isAlarm = false; /* Alarm-Flag wieder auf 0 setzen*/
+    isAlarm = false; /* set Alarm-Flag back to 0 */
     seconds = 60;
   }
 }
@@ -584,6 +669,7 @@ enum State ReadButton(unsigned char button)
 /* Get all button states */
 void Get_Buttons()
 {
+  static int longPress = 0;
   enum State T1_new;
   enum State T2_new;
   enum State T3_new;
@@ -610,6 +696,27 @@ void Get_Buttons()
     stateTA3 = T3_new;
     edge3 = 1;
   }
+  else
+  {
+    if (stateTA3 == 1)
+    {
+      longPress++;
+      if (longPress >= 1000)
+      {
+        isSilent = !isSilent;
+        isLongPressed = true;
+      }
+      else
+      {
+        isLongPressed = false;
+      }
+    }
+    else
+    {
+      longPress = 0;
+    }
+  }
+
   T1_old = T1_new;
   T2_old = T2_new;
   T3_old = T3_new;
@@ -621,10 +728,12 @@ void Get_Buttons()
 
 int main()
 {
+  Serial.begin(9600); /* Debugging */
   Init_Display();
+  Init_Feedback();
   Init_Alarm();
   Init_T0();
-  Init_T1();
+  Init_T2();
   sei();
   while (1)
   {
