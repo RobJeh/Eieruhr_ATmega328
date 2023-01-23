@@ -382,19 +382,22 @@ void Wait(unsigned long delay)
 /* Creating a sound */
 void Sound(unsigned long durationOn, unsigned long durationOff)
 {
-  if (isSilent)
+  if (isAlarm == 1)
   {
-    LED1_ON();
-    Wait(durationOn);
-    LED1_OFF();
-    Wait(durationOff);
-  }
-  else
-  {
-    Speaker_ON();
-    Wait(durationOn);
-    Speaker_OFF();
-    Wait(durationOff);
+    if (isSilent)
+    {
+      LED1_ON();
+      Wait(durationOn);
+      LED1_OFF();
+      Wait(durationOff);
+    }
+    else
+    {
+      Speaker_ON();
+      Wait(durationOn);
+      Speaker_OFF();
+      Wait(durationOff);
+    }
   }
 }
 
